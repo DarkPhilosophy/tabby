@@ -79,6 +79,7 @@ ipcRenderer.once('start', async (_$event, bootstrapData: BootstrapData) => {
             console.error('Bootstrap failed:', error2)
         }
     }
+    ipcRenderer.send('app:ready')
 })
 
 ipcRenderer.send('ready')

@@ -1,0 +1,168 @@
+h3.mb-3(translate) Config sync
+
+.alert.alert-warning(*ngIf='!sync.isAvailable()')
+    div(translate) Config sync is not available in the web version.
+
+ng-container(*ngIf='sync.isAvailable()')
+    .form-line
+        .header
+            .title(translate) Storage
+            .description(translate) Where the config document is kept. Tabby talks to the provider directly - no extra server.
+
+        select.form-select.w-50(
+            [ngModel]='config.store.sync.transport',
+            (ngModelChange)='selectTransport($event)',
+        )
+            option([ngValue]='null', translate) Disabled
+            option(*ngFor='let t of transports', [ngValue]='t.info.id') {{t.info.name}}
+
+    ng-container(*ngIf='transport')
+        .alert.alert-info.d-flex.align-items-center
+            i.fas.fa-fw([class]='transport.info.icon')
+            .ms-2.me-auto {{transport.info.description}}
+            button.btn.btn-sm.btn-link(*ngIf='transport.info.helpUrl', (click)='openHelpUrl()')
+                i.fas.fa-external-link-alt
+                span.ms-2(translate) Help
+
+        .form-line(*ngFor='let field of transport.info.fields')
+            .header
+                .title {{field.label}}
+                .description(*ngIf='field.hint') {{field.hint}}
+
+            input.form-control.w-50(
+                [type]='field.type === "number" ? "number" : "text"',
+                [placeholder]='field.placeholder ?? ""',
+                [(ngModel)]='options[field.key]',
+                (change)='saveOptions()',
+            )
+
+        ng-container(*ngIf='transport.info.secretLabel')
+            .form-line
+                .header
+                    .title {{transport.info.secretLabel}}
+                    .description(translate) Stored in the Vault, never in the synced document.
+
+                .input-group.w-50
+                    input.form-control(
+                        type='password',
+                        [placeholder]='transport.info.secretPlaceholder ?? "Paste token / password here"',
+                        autocomplete='off',
+                        [(ngModel)]='secret',
+                        (ngModelChange)='secretDirty = true',
+                        (change)='saveSecret()',
+                        (blur)='saveSecret()',
+                    )
+                    .input-group-text(*ngIf='validated !== null')
+                        i.fas.fa-fw.fa-check.text-success(*ngIf='validated')
+                        i.fas.fa-fw.fa-exclamation-triangle.text-danger(*ngIf='!validated')
+
+            .alert.alert-warning(*ngIf='!vaultAvailable && !config.store.sync.allowPlaintextSecret')
+                div(translate) The Vault is not enabled, so there is nowhere safe to keep this credential. Enable the Vault in its own tab, or store it as plain text in config.yaml.
+                button.btn.btn-sm.btn-outline-danger.mt-2((click)='allowPlaintext()', translate) Store as plain text
+
+            .alert.alert-danger(*ngIf='plaintextSecret')
+                i.fas.fa-exclamation-triangle
+                span.ms-2(translate) This credential is stored unencrypted in config.yaml. It is excluded from the synced document, but anyone with local file access can read it.
+
+        .alert.alert-danger(*ngIf='validated === false')
+            i.fas.fa-exclamation-triangle
+            span.ms-2(translate='Connection failed: {error}', [translateParams]='{error: validationError}')
+
+        .form-line
+            .header
+                .title(translate) Sync automatically
+                .description(translate) Upload local changes and poll the remote for updates
+
+            toggle(
+                [(ngModel)]='config.store.sync.auto',
+                (ngModelChange)='onAutoToggle($event)',
+            )
+
+        .form-line(*ngIf='config.store.sync.auto')
+            .header
+                .title(translate) Poll interval
+                .description(translate='At least {min} seconds', [translateParams]='{min: minInterval}')
+
+            .input-group.w-25
+                input.form-control(
+                    type='number',
+                    [min]='minInterval',
+                    [(ngModel)]='config.store.sync.interval',
+                    (change)='saveInterval()',
+                )
+                .input-group-text s
+
+        .form-line
+            .header
+                .title(translate) Actions
+
+            .d-flex.flex-wrap.gap-2
+                button.btn([ngClass]='testButtonClass', [disabled]='busy', (click)='validate()')
+                    i.fas.fa-fw.fa-circle-notch.fa-spin(*ngIf='busy')
+                    i.fas.fa-fw.fa-check(*ngIf='!busy && validated === true')
+                    i.fas.fa-fw.fa-times(*ngIf='!busy && validated === false')
+                    i.fas.fa-fw.fa-plug(*ngIf='!busy && validated === null')
+                    span.ms-2(translate) Test connection
+                button.btn.btn-primary([disabled]='busy', (click)='syncNow()')
+                    i.fas.fa-fw.fa-sync
+                    span.ms-2(translate) Sync now
+                button.btn.btn-secondary([disabled]='busy', (click)='forceUpload()')
+                    i.fas.fa-fw.fa-cloud-upload-alt
+                    span.ms-2(translate) Force upload
+                button.btn.btn-secondary([disabled]='busy', (click)='forceDownload()')
+                    i.fas.fa-fw.fa-cloud-download-alt
+                    span.ms-2(translate) Force download
+                button.btn.btn-link([disabled]='busy', (click)='resetState()')
+                    span(translate) Reset sync state
+
+        .alert.alert-warning(*ngIf='sync.status.direction === "conflict"')
+            i.fas.fa-exclamation-triangle
+            span.ms-2(translate) Local and remote both changed since the last sync. Nothing was overwritten - pick a side with Force upload or Force download.
+
+        .alert.alert-danger(*ngIf='sync.status.error')
+            i.fas.fa-exclamation-triangle
+            span.ms-2 {{sync.status.error}}
+
+        ng-container(*ngIf='statusMessage')
+            .form-line
+                .header
+                    .title(translate) Status
+                .description.text-nowrap
+                    span([ngClass]='statusClass') {{statusMessage}}
+
+        .form-line(*ngIf='sync.status.at')
+            .header
+                .title(translate) Last sync
+                .description {{lastSync | tabbyDate}}
+
+        .form-line(*ngIf='nextPoll && config.store.sync.auto')
+            .header
+                .title(translate) Next automatic poll
+                .description
+                    span.d-flex.align-items-center.gap-2
+                        i.fas.fa-fw.fa-clock.text-muted
+                        span {{nextPoll | tabbyDate}}
+                        i.fas.fa-fw.fa-spinner.fa-spin.text-muted
+
+        .form-line(*ngIf='syncing')
+            .header
+                .title(translate) Manual sync in progress
+                .description
+                    span.d-flex.align-items-center.gap-2
+                        i.fas.fa-fw.fa-spinner.fa-spin.text-primary
+                        span {{translate.instant('Syncing…')}}
+
+        h4.mt-4.mb-2(translate) Included sections
+
+        .alert.alert-info(*ngIf='config.store.encrypted')
+            div(translate) The whole config is encrypted by the Vault, so it is synced as one blob. Per-section control is unavailable.
+
+        ng-container(*ngIf='!config.store.encrypted')
+            .form-line(*ngFor='let part of parts')
+                .header
+                    .title([translate]='partLabels[part]')
+
+                toggle(
+                    [(ngModel)]='config.store.sync.parts[part]',
+                    (ngModelChange)='config.save()',
+                )

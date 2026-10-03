@@ -106,6 +106,7 @@ export default class ElectronModule {
             this.registerGlobalHotkey()
             this.updateVibrancy()
             this.updateWindowControlsColor()
+            this.updateUiScale()
         })
 
         config.changed$.subscribe(() => {
@@ -139,6 +140,7 @@ export default class ElectronModule {
         config.changed$.subscribe(() => {
             this.updateVibrancy()
             this.updateDarkMode()
+            this.updateUiScale()
         })
 
         config.changed$.subscribe(() => this.updateWindowControlsColor())
@@ -180,6 +182,18 @@ export default class ElectronModule {
         this.electron.ipcRenderer.send('window-set-vibrancy', this.config.store.appearance.vibrancy, vibrancyType)
 
         this.hostWindow.setOpacity(this.config.store.appearance.opacity)
+    }
+
+    /**
+     * Scales the whole interface, the same model Heroic uses: a percentage
+     * (`appearance.uiScale`, 60–200) turned into a webContents zoom level.
+     * `setZoomLevel` steps are 0.2 apart, so the percent is mapped through
+     * that grid — the terminal grid is refit by xterm as a consequence.
+     */
+    private updateUiScale () {
+        const percent = this.config.store.appearance.uiScale ?? 100
+        const zoomLevel = (Math.max(60, Math.min(200, percent)) / 100 - 1) / 0.2
+        this.hostWindow.getWindow().webContents.setZoomLevel(zoomLevel)
     }
 
     private updateDarkMode () {

@@ -3,7 +3,7 @@ import { SettingsTabProvider } from './api'
 import { HotkeySettingsTabComponent } from './components/hotkeySettingsTab.component'
 import { WindowSettingsTabComponent } from './components/windowSettingsTab.component'
 import { VaultSettingsTabComponent } from './components/vaultSettingsTab.component'
-import { ConfigSyncSettingsTabComponent } from './components/configSyncSettingsTab.component'
+import { SyncSettingsTabComponent } from './components/syncSettingsTab.component'
 import { ProfilesSettingsTabComponent } from './components/profilesSettingsTab.component'
 import { TranslateService } from 'tabby-core'
 
@@ -67,14 +67,14 @@ export class ProfilesSettingsTabProvider extends SettingsTabProvider {
 
 /** @hidden */
 @Injectable()
-export class ConfigSyncSettingsTabProvider extends SettingsTabProvider {
-    id = 'config-sync'
+export class SyncSettingsTabProvider extends SettingsTabProvider {
+    id = 'sync'
     icon = 'cloud'
     title = this.translate.instant('Config sync')
 
     constructor (private translate: TranslateService) { super() }
 
     getComponentType (): any {
-        return ConfigSyncSettingsTabComponent
+        return SyncSettingsTabComponent
     }
 }

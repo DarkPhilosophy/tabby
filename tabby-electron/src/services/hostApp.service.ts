@@ -1,5 +1,5 @@
 import { Injectable, NgZone, Injector } from '@angular/core'
-import { isWindowsBuild, WIN_BUILD_FLUENT_BG_SUPPORTED, HostAppService, Platform, CLIHandler } from 'tabby-core'
+import { isWindowsBuild, WIN_BUILD_FLUENT_BG_SUPPORTED, ConfigService, HostAppService, Platform, CLIHandler } from 'tabby-core'
 import { ElectronService } from '../services/electron.service'
 
 
@@ -30,6 +30,15 @@ export class ElectronHostAppService extends HostAppService {
             const event = { argv, cwd, secondInstance }
             this.logger.info('CLI arguments received:', event)
 
+            // The renderer reports `app:ready` as soon as Angular bootstraps,
+            // so the main process can deliver `cli` before ConfigService has
+            // finished its first load. Handlers read `config.store` (profiles,
+            // terminal.autoOpen), so wait for it - otherwise they throw
+            // "Cannot read properties of undefined".
+            // Resolved through the injector to keep ConfigService out of this
+            // service's constructor graph (ConfigService depends on it).
+            await injector.get(ConfigService).ready$.toPromise()
+
             const cliHandlers = injector.get(CLIHandler) as unknown as CLIHandler[]
             cliHandlers.sort((a, b) => b.priority - a.priority)
 
@@ -38,9 +47,14 @@ export class ElectronHostAppService extends HostAppService {
                 if (handled && handler.firstMatchOnly) {
                     continue
                 }
-                if (await handler.handle(event)) {
-                    this.logger.info('CLI handler matched:', handler.constructor.name)
-                    handled = true
+                try {
+                    if (await handler.handle(event)) {
+                        this.logger.info('CLI handler matched:', handler.constructor.name)
+                        handled = true
+                    }
+                } catch (error) {
+                    // One broken handler must not abort the remaining ones.
+                    this.logger.error(`CLI handler ${handler.constructor.name} failed:`, error)
                 }
             }
         }))

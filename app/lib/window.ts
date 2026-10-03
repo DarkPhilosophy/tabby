@@ -6,6 +6,7 @@ import ElectronConfig = require('electron-config')
 import { enable as enableRemote } from '@electron/remote/main'
 import * as os from 'os'
 import * as path from 'path'
+import * as fs from 'fs'
 import macOSRelease from 'macos-release'
 import { compare as compareVersions } from 'compare-versions'
 
@@ -46,6 +47,11 @@ export class Window {
     private touchBarControl: any
     private isFluentVibrancy = false
     private dockHidden = false
+    /**
+     * True only when the window was actually created by Glasstron. A Wayland
+     * session (and macOS) gets a plain BrowserWindow, which has no `setBlur`.
+     */
+    private hasGlasstron = false
 
     get visible$ (): Observable<boolean> { return this.visible }
     get closed$ (): Observable<void> { return this.closed }
@@ -101,14 +107,16 @@ export class Window {
             }
         }
 
-        if (process.platform === 'darwin') {
-            bwOptions.visualEffectState = 'active'
-        }
+        const isWaylandSession = process.platform === 'linux' && (
+            (process.env.XDG_SESSION_TYPE ?? '').toLowerCase() === 'wayland' ||
+            !!process.env.WAYLAND_DISPLAY
+        )
 
-        if (process.platform === 'darwin') {
-            this.window = new BrowserWindow(bwOptions) as GlasstronWindow
-        } else {
+        this.hasGlasstron = !(process.platform === 'darwin' || isWaylandSession)
+        if (this.hasGlasstron) {
             this.window = new glasstron.BrowserWindow(bwOptions)
+        } else {
+            this.window = new BrowserWindow(bwOptions) as GlasstronWindow
         }
 
         this.webContents = this.window.webContents
@@ -146,13 +154,30 @@ export class Window {
 
         enableRemote(this.window.webContents)
 
-        this.window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'))
 
         this.window.webContents.setVisualZoomLevelLimits(1, 1)
         this.window.webContents.setZoomFactor(1)
         this.window.webContents.session.setPermissionCheckHandler(() => true)
         this.window.webContents.session.setDevicePermissionHandler(() => true)
         this.window.webContents.session.setSpellCheckerEnabled(false)
+
+        // Ctrl+Shift+I -> DevTools, at the OS-input layer (before Tabby's own
+        // hotkeys see it). The menu accelerator is dead on Linux because the
+        // app menu is detached from the window.
+        if (process.platform !== 'darwin') {
+            this.window.webContents.on('before-input-event', (_event, input) => {
+                if (
+                    input.type === 'keyDown' &&
+                    input.control &&
+                    input.shift &&
+                    !input.alt &&
+                    !input.meta &&
+                    input.code === 'KeyI'
+                ) {
+                    this.window.webContents.toggleDevTools()
+                }
+            })
+        }
 
         if (process.platform === 'darwin') {
             this.touchBarControl = new TouchBar.TouchBarSegmentedControl({
@@ -171,12 +196,52 @@ export class Window {
 
         this.ready = new Promise(resolve => {
             const listener = event => {
+                console.log('IPC app:ready', event.sender.id, this.window.webContents.id)
                 if (event.sender === this.window.webContents) {
                     ipcMain.removeListener('app:ready', listener as any)
                     resolve()
                 }
             }
             ipcMain.on('app:ready', listener)
+        })
+        this.window.loadFile(path.join(app.getAppPath(), 'dist', 'index.html'))
+        this.setupDevLiveReload()
+    }
+
+    /**
+     * Dev-only live reload. `electron app` serves prebuilt webpack bundles, so a
+     * source edit is invisible until the renderer reloads. With a `webpack
+     * --watch` running beside the app, reload the window whenever the renderer
+     * bundle is rewritten (debounced: webpack touches it several times per
+     * build). Main-process bundles cannot be hot-swapped, so those still need a
+     * relaunch. Disable with TABBY_DEV_LIVE_RELOAD=0.
+     */
+    private setupDevLiveReload (): void {
+        if (app.isPackaged || process.env.TABBY_DEV_LIVE_RELOAD === '0') {
+            return
+        }
+        const bundle = path.join(app.getAppPath(), 'dist', 'bundle.js')
+        let timer: NodeJS.Timeout | null = null
+        let watcher: fs.FSWatcher
+        try {
+            watcher = fs.watch(bundle, () => {
+                clearTimeout(timer ?? undefined)
+                timer = setTimeout(() => {
+                    timer = null
+                    if (!this.window || this.window.isDestroyed()) {
+                        return
+                    }
+                    console.log('Dev live reload: renderer bundle changed')
+                    this.window.webContents.reloadIgnoringCache()
+                }, 500)
+            })
+        } catch (error) {
+            console.warn('Dev live reload unavailable:', error)
+            return
+        }
+        this.window.on('closed', () => {
+            clearTimeout(timer ?? undefined)
+            watcher.close()
         })
     }
 
@@ -203,7 +268,9 @@ export class Window {
             }
         } else if (process.platform === 'linux') {
             this.window.setBackgroundColor(enabled ? '#00000000' : '#131d27')
-            this.window.setBlur(enabled)
+            if (this.hasGlasstron) {
+                this.window.setBlur(enabled)
+            }
         } else {
             this.window.setVibrancy(enabled ? macOSVibrancyType : null)
         }
@@ -377,6 +444,7 @@ export class Window {
         })
 
         this.on('ready', () => {
+            console.log('Sending start bootstrap')
             this.window?.webContents.send('start', {
                 config: this.configStore,
                 executable: app.getPath('exe'),
@@ -384,6 +452,7 @@ export class Window {
                 isMainWindow: this.isMainWindow,
                 userPluginsPath: this.application.userPluginsPath,
             })
+            console.log('Sent start bootstrap')
         })
 
         this.on('window-minimize', () => {
@@ -427,6 +496,10 @@ export class Window {
                 this.window.restore()
             }
             this.present()
+        })
+
+        this.on('window-toggle-devtools', () => {
+            this.window?.webContents.toggleDevTools()
         })
 
         this.on('window-close', () => {
@@ -481,6 +554,7 @@ export class Window {
 
     on (event: string, listener: (...args: any[]) => void): void {
         ipcMain.on(event, (e, ...args) => {
+            console.log('IPC event', event, e.sender.id, this.window?.webContents.id)
             if (!this.window || e.sender !== this.window.webContents) {
                 return
             }

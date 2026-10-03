@@ -17,6 +17,21 @@ h3.mb-3(translate) Appearance
             (ngModelChange)='fixFontSize(); config.save()',
         )
 
+.form-line
+    .header
+        .title(translate) UI size
+        .description(translate) Scales the whole interface, tabs and terminal included
+    .d-flex.align-items-center.gap-3
+        input(
+            type='range',
+            [(ngModel)]='config.store.appearance.uiScale',
+            (ngModelChange)='saveConfiguration()',
+            min='60',
+            max='200',
+            step='10'
+        )
+        span.text-monospace {{config.store.appearance.uiScale}}%
+
 .row
     .col-12.col-md-6
         .form-line

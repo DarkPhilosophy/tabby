@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import { app } from 'electron'
 
 interface YargsOption {
@@ -127,6 +129,25 @@ function createParserFromConfig (config: ParserConfig) {
 
 export function parseArgs (argv: string[], cwd: string): any {
     const args = argv[0].includes('node') ? argv.slice(2) : argv.slice(1)
+    // In a dev launch (`electron [flags] app`) Electron leaves the app directory
+    // in argv as a positional, so OpenPathCLIHandler resolves it to a directory
+    // and opens a spurious tab there on every start. Its position depends on
+    // flag order (verified: `electron --ozone-platform=wayland --no-sandbox app`
+    // yields it last), so match by value rather than index and drop only the
+    // first occurrence. Packaged builds never carry it.
+    if (app.isPackaged === false) {
+        const appPath = fs.realpathSync(app.getAppPath())
+        const index = args.findIndex(arg => {
+            try {
+                return fs.realpathSync(path.resolve(cwd, arg)) === appPath
+            } catch {
+                return false
+            }
+        })
+        if (index !== -1) {
+            args.splice(index, 1)
+        }
+    }
     const config = createParserConfig(cwd)
     const parser = createParserFromConfig(config)
     return parser.parse(args)

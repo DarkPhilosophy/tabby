@@ -18,16 +18,17 @@ import { VaultSettingsTabComponent }  from './components/vaultSettingsTab.compon
 import { SetVaultPassphraseModalComponent } from './components/setVaultPassphraseModal.component'
 import { ProfilesSettingsTabComponent } from './components/profilesSettingsTab.component'
 import { ReleaseNotesComponent } from './components/releaseNotesTab.component'
-import { ConfigSyncSettingsTabComponent } from './components/configSyncSettingsTab.component'
+import { SyncSettingsTabComponent } from './components/syncSettingsTab.component'
 import { ShowSecretModalComponent } from './components/showSecretModal.component'
 
-import { ConfigSyncService } from './services/configSync.service'
+import { SYNC_TRANSPORT_PROVIDERS } from './sync/transports'
+import { SyncService } from './sync/sync.service'
 
 import { SettingsTabProvider } from './api'
 import { ButtonProvider } from './buttonProvider'
 import { SettingsHotkeyProvider } from './hotkeys'
 import { SettingsConfigProvider } from './config'
-import { HotkeySettingsTabProvider, WindowSettingsTabProvider, VaultSettingsTabProvider, ProfilesSettingsTabProvider, ConfigSyncSettingsTabProvider } from './settings'
+import { HotkeySettingsTabProvider, WindowSettingsTabProvider, VaultSettingsTabProvider, ProfilesSettingsTabProvider, SyncSettingsTabProvider } from './settings'
 
 /** @hidden */
 @NgModule({
@@ -46,7 +47,8 @@ import { HotkeySettingsTabProvider, WindowSettingsTabProvider, VaultSettingsTabP
         { provide: SettingsTabProvider, useClass: WindowSettingsTabProvider, multi: true },
         { provide: SettingsTabProvider, useClass: VaultSettingsTabProvider, multi: true },
         { provide: SettingsTabProvider, useClass: ProfilesSettingsTabProvider, multi: true },
-        { provide: SettingsTabProvider, useClass: ConfigSyncSettingsTabProvider, multi: true },
+        { provide: SettingsTabProvider, useClass: SyncSettingsTabProvider, multi: true },
+        ...SYNC_TRANSPORT_PROVIDERS,
     ],
     declarations: [
         EditProfileModalComponent,
@@ -60,14 +62,14 @@ import { HotkeySettingsTabProvider, WindowSettingsTabProvider, VaultSettingsTabP
         SetVaultPassphraseModalComponent,
         VaultSettingsTabComponent,
         WindowSettingsTabComponent,
-        ConfigSyncSettingsTabComponent,
+        SyncSettingsTabComponent,
         ReleaseNotesComponent,
         ShowSecretModalComponent,
     ],
 })
 export default class SettingsModule {
     constructor (
-        public configSync: ConfigSyncService,
+        public sync: SyncService,
         app: AppService,
         hotkeys: HotkeysService,
     ) {

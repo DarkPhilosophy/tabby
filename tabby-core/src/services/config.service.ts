@@ -452,6 +452,13 @@ export class ConfigService {
             }
             config.version = 8
         }
+        if (config.version < 9) {
+            // The Tabby Web-backed config sync was replaced by the native
+            // multi-transport implementation in tabby-settings; its host/token
+            // pair has no equivalent and is dropped.
+            delete config.configSync
+            config.version = 9
+        }
     }
 
     private async maybeDecryptConfig (store) {
@@ -519,12 +526,12 @@ export class ConfigService {
         }
         delete decryptedVault.config.vault
         delete decryptedVault.config.encrypted
-        delete decryptedVault.config.configSync
+        delete decryptedVault.config.sync
         return {
             ...decryptedVault.config,
             vault: store.vault,
             encrypted: store.encrypted,
-            configSync: store.configSync,
+            sync: store.sync,
         }
     }
 
@@ -539,11 +546,11 @@ export class ConfigService {
         vault.config = { ...store }
         delete vault.config.vault
         delete vault.config.encrypted
-        delete vault.config.configSync
+        delete vault.config.sync
         return {
             vault: await this.vault.encrypt(vault),
             encrypted: true,
-            configSync: store.configSync,
+            sync: store.sync,
         }
     }
 }

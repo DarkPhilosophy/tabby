@@ -65,7 +65,9 @@ export class ElectronHostWindow extends HostWindowService {
     }
 
     openDevTools (): void {
-        this.getWindow().webContents.openDevTools({ mode: 'undocked' })
+        // Route through the main-process window over IPC — the same channel
+        // the working `window-set-title`/`window-close` actions use.
+        this.electron.ipcRenderer.send('window-toggle-devtools')
     }
 
     reload (): void {

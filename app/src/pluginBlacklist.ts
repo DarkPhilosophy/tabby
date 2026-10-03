@@ -8,4 +8,6 @@ export const PLUGIN_BLACKLIST = [
     'terminus-elastic-quick-cmds', // broken and abandoned, fork of quick-commands
     'tabby-fig', // abandoned,
     'tabby-plugin-fig-integration', // abandoned,
+    'terminus-cloud-settings-sync', // config sync now bundled with Tabby
+    'tabby-cloud-sync-settings', // config sync now bundled with Tabby
 ]
