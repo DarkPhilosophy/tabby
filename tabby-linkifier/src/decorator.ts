@@ -14,6 +14,14 @@ interface XtermLinkProvider {
     provideLinks: (row: number, callback: (links: XtermLink[] | undefined) => void) => void
 }
 
+function parseURL (uri: string): URL|null {
+    try {
+        return new URL(uri)
+    } catch {
+        return null
+    }
+}
+
 @Injectable()
 export class LinkHighlighterDecorator extends TerminalDecorator {
     constructor (
@@ -31,13 +39,23 @@ export class LinkHighlighterDecorator extends TerminalDecorator {
         }
 
         tab.frontend.xterm.options.linkHandler = {
+            allowNonHttpProtocols: true,
             activate: (event, uri) => {
                 if (!this.willHandleEvent(event)) {
                     return
                 }
-                this.platform.openExternal(uri)
+                const url = parseURL(uri)
+                if (!url) {
+                    return
+                }
+                // A file: URL with a host is a UNC path - opening it would reach out
+                // over SMB to a server the remote side chose. Only allow local files.
+                const isLocalFile = url.protocol === 'file:' && !url.host
+                if (!['http:', 'https:'].includes(url.protocol) && !isLocalFile) {
+                    return
+                }
+                this.platform.openExternal(url.href)
             },
-            allowNonHttpProtocols: true,
         }
 
         const openLink = async uri => {
@@ -49,6 +67,7 @@ export class LinkHighlighterDecorator extends TerminalDecorator {
                     continue
                 }
                 handler.handle(await handler.convert(uri, tab), tab)
+                return
             }
         }
 
